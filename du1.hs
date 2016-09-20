@@ -31,6 +31,14 @@ reverse :: [a] -> [a]
 reverse [] = []
 reverse (x:xs) = reverse xs ++ [x]
 
+-- rychlejší alternativa
+reverseFast:: [a] -> [a]
+reverseFast [] = []
+reverseFast (x:xs) = reverseInner xs []
+  where
+    reverseInner [] x = x
+    reverseInner (x:xs) ys = reverseInner xs (x:ys)
+
 
 -- 5. merge a list with a function
 zipWith :: (a -> b -> t) -> [a] -> [b] -> [t]
@@ -64,3 +72,8 @@ min (x:xs) = minInner x xs
     minInner x [] = x
     minInner x (y:ys) = if y < x then minInner y ys
                         else minInner x ys
+-- alternativa
+nejmensi :: Ord a => [a] -> a
+nejmensi [x] = x
+nejmensi (x:y:z) | x < y = nejmensi (x:z)
+                 | otherwise = nejmensi (y:z)
