@@ -10,7 +10,57 @@ type TillType = [BarCode]
 type BillType = [(Name,Price)]
 type GroupedBillType = (Name, [Price])
 
-store = [(1, "Jablko", 15), (2, "Hruska", 18), (3, "Cokolada", 49), (4, "Jahodovy liker s ovocem", 168)]
+
+type Pic = [String]
+
+picNextTo :: Pic -> Pic -> Pic
+picNextTo p1 p2 = zipWith (++) p1 p2
+
+numToAscii :: Integer -> Pic
+numToAscii x = if x == 0 then
+                          [" - ",
+                           "| |",
+                           " - "]
+               else if x == 1 then
+                          [" /|",
+                           "/ |",
+                           "  |"]
+               else if x == 2 then
+                          ["/-/",
+                           " / ",
+                           "/__"]
+               else if x == 3 then
+                          ["---",
+                           " -|",
+                           "___"]
+               else if x == 4 then
+                          [" /|",
+                           "/_|",
+                           "  |"]
+               else if x == 5 then
+                          ["/--",
+                           " - ",
+                           "--/"]
+               else if x == 6 then
+                          ["/--",
+                           "|- ",
+                           "|_\\"]
+               else if x == 7 then
+                          ["---",
+                           "  |",
+                           "  |"]
+               else if x == 8 then
+                          ["/-\\",
+                           "|_|",
+                           "\\_|"]
+               else if x == 9 then
+                          ["---",
+                           "|_|",
+                           "__|"]
+               else repeatItem "   " 3
+
+
+store = [(1, "Jablko", 15), (2, "Hruska", 18), (3, "Cokolada", 49), (4, "Jahodovy liker s ovocem", 142)]
 till = [1, 1, 2, 2, 2, 3, 4, 4]
 
 repeatItem :: a -> Int -> [a]
@@ -21,6 +71,9 @@ makeBill db till = map (\t -> head [(n, p) | (c, n, p) <- db, c == t]) till
 
 padRight :: String -> Char -> Int -> String
 padRight str c width = str ++ (repeatItem c (width - (length str)))
+
+padLeft :: String -> Char -> Int -> String
+padLeft str c width = (repeatItem c (width - (length str))) ++ str
 
 groupProducts :: BillType -> [GroupedBillType] -> [GroupedBillType]
 groupProducts [] x = x
@@ -47,9 +100,19 @@ findWidth :: [GroupedBillType] -> Int
 findWidth b = maximum (map (\x -> length (formatRow x ".....")) b)
 
 formatPrice :: Integer -> Int -> String
-formatPrice price width = padRight "Castka" '.' (width - length priceStr) ++ priceStr
+formatPrice price width = padRight "Celkem" '.' (width - length priceStr) ++ priceStr
   where
     priceStr = show price ++ " Kc"
+
+asciifyPrice :: Integer -> Pic
+asciifyPrice 0 = numToAscii 0
+asciifyPrice p = asciifyPriceInner p ["", "", ""]
+  where
+    asciifyPriceInner :: Integer -> Pic -> Pic
+    asciifyPriceInner 0 l = l
+    asciifyPriceInner p l = asciifyPriceInner (p `div` 10) (picNextTo img l)
+      where
+        img = picNextTo (numToAscii (mod p 10)) [" ", " ", " "]
 
 formatBill :: BillType -> String
 formatBill bill = concat (map (++ "\n")(
@@ -57,11 +120,17 @@ formatBill bill = concat (map (++ "\n")(
                     ++ repeatItem (padRight "" '-' width) 2
                     ++ map (\p -> formatRowToWidth p width) products
                     ++ [padRight "" '-' width]
-                    ++ [formatPrice (sum [sum p | (name, p) <- products]) width]
+                    ++ [formatPrice price width]
+                    ++ [padRight "" '-' width]
+                    ++ map (\a -> padLeft a '-' width) (asciifyPrice price)
                   ))
   where
     products = sortProducts (groupProducts bill [])
     width = findWidth products
+    price = (sum [sum p | (name, p) <- products])
 
 produceBill :: Database -> TillType -> String
 produceBill db till = formatBill (makeBill db till)
+
+printDu :: IO ()
+printDu = putStr (produceBill store till)
