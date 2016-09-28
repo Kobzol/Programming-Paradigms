@@ -6,9 +6,9 @@ import Debug.Trace
 import Data.Array
 import Data.Ix
 
-maxLineLength = 6
---vstup = "In computer science, \tfunctional programming is a programming \tparadigm that treats computation   as \tthe evaluation of mathematical functions and avoids state and mutable data.    It emphasizes the application of functions, in contrast to the imperative \tprogramming style, which emphasizes changes in state."
-vstup = "aaa bb cc ddddd"
+maxLineLength = 30
+vstup = "In computer science, \tfunctional programming is a programming \tparadigm that treats computation   as \tthe evaluation of mathematical functions and avoids state and mutable data.    It emphasizes the application of functions, in contrast to the imperative \tprogramming style, which emphasizes changes in state."
+--vstup = "aaa bb cc ddddd"
 
 -- dynamické programování - rozdelit na co nejmenší pocet rádku
 
@@ -35,18 +35,33 @@ lineLengthWithSpaces line spaceWidth maxLength =
     startLength = wordLength + safeWordLength
     appendLength = max 0 (min (maxLength - (startLength)) spaceWidth)
 
+makeSpaces :: [String] -> Int -> [String]
+makeSpaces line spaceWidth = (addSpace (init line)) ++ [last line]
+  where
+    addSpace [] = []
+    addSpace (x:xs) = x:((repeatItem ' ' spaceWidth): addSpace xs)
+
+justifyLine :: [String] -> Int -> Int -> String
+justifyLine line spaceWidth maxLength = concat (increaseSpace lineWithSpaces 1)
+  where
+    lineWithSpaces = makeSpaces line spaceWidth
+    realLength l = length $ concat l
+    increaseSpace line i =
+      if realLength line == maxLength then line
+      else increaseSpace widenedLine (i + 2)
+      where
+        widenedLine = (take i line) ++ [repeatItem ' ' (spaceWidth + 1)] ++ (drop (i + 1) line)
+
 widenLine :: [String] -> Int -> Int -> String
 widenLine line spaceWidth maxLength = 
   if widenedLength < maxLength then widenLine line (spaceWidth + 1) maxLength
-  else if widenedLength > maxLength then makeLine line (spaceWidth - 1) maxLength
+  else if widenedLength > maxLength then justifyLine line (spaceWidth - 1) maxLength
   else makeLine line spaceWidth maxLength
   where
     widenedLength = lineLengthWithSpaces line spaceWidth maxLength
 
 makeLine :: [String] -> Int -> Int -> String
-makeLine line spaceWidth maxLength = take maxLength joined
-  where
-    joined = concat (map (++ (repeatItem ' ' spaceWidth)) line)
+makeLine line spaceWidth maxLength = take maxLength $ concat (map (++ (repeatItem ' ' spaceWidth)) line)
 
 lineify :: [String] -> String
 lineify s = concat (map (++ "\n") s)
@@ -117,7 +132,7 @@ badness w i j maxLength = badnessScore (takeRange w i j)
   where
     badnessScore :: [String] -> Int
     badnessScore [] = 0
-    badnessScore w = if len > maxLength then 1000
+    badnessScore w = if len > maxLength then 10000000
                      else margin * margin
       where
         len = lineLength w 1 maxLength
