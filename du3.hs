@@ -6,9 +6,9 @@ import Debug.Trace
 import Data.Array
 import Data.Ix
 
-maxLineLength = 30
-vstup = "In computer science, \tfunctional programming is a programming \tparadigm that treats computation   as \tthe evaluation of mathematical functions and avoids state and mutable data.    It emphasizes the application of functions, in contrast to the imperative \tprogramming style, which emphasizes changes in state."
---vstup = "aaa bb cc ddddd"
+maxLineLength = 6
+--vstup = "In computer science, \tfunctional programming is a programming \tparadigm that treats computation   as \tthe evaluation of mathematical functions and avoids state and mutable data.    It emphasizes the application of functions, in contrast to the imperative \tprogramming style, which emphasizes changes in state."
+vstup = "aaa bb cc ddddd"
 
 -- dynamické programování - rozdelit na co nejmenší pocet rádku
 
@@ -17,6 +17,15 @@ repeatItem a count = take count (repeat a)
 
 lineLength :: [String] -> Int -> Int -> Int
 lineLength line spaceWidth maxLength =
+  if length line == 0 then 0
+  else wordLength + safeWordLength
+  where
+    wordLength = sum (map (length) line)
+    safeWords = init line
+    safeWordLength = spaceWidth * (length safeWords)
+
+lineLengthWithSpaces :: [String] -> Int -> Int -> Int
+lineLengthWithSpaces line spaceWidth maxLength =
   if length line == 0 then 0
   else startLength + appendLength
   where
@@ -32,7 +41,7 @@ widenLine line spaceWidth maxLength =
   else if widenedLength > maxLength then makeLine line (spaceWidth - 1) maxLength
   else makeLine line spaceWidth maxLength
   where
-    widenedLength = lineLength line spaceWidth maxLength
+    widenedLength = lineLengthWithSpaces line spaceWidth maxLength
 
 makeLine :: [String] -> Int -> Int -> String
 makeLine line spaceWidth maxLength = take maxLength joined
@@ -75,6 +84,12 @@ hyphenateJustify (word:ls) line res maxLength =
     (leftHalf, rightHalf) = splitWordAt word (((length word) - (appendedLength - maxLength)) - 1)
 
 
+scoreLines :: [String] -> Int
+scoreLines l = sum (map (\x -> scoreSquare (scoreLine x)) l)
+  where
+    scoreSquare x = x * x
+    scoreLine l = length (takeWhile (\x -> x == ' ') (reverse l))
+
 backtrackJustify :: [String] -> [String] -> [String] -> Int -> [String]
 backtrackJustify [] line res maxLength = res ++ [(makeLine line 1 maxLength)]
 backtrackJustify (word:ls) line res maxLength =
@@ -94,32 +109,44 @@ backtrackJustify (word:ls) line res maxLength =
     scoreKeep = scoreLines (linesKeep)
     scoreMove = scoreLines (linesMove)
 
-
-scoreLines :: [String] -> Int
-scoreLines l = sum (map (\x -> scoreSquare (scoreLine x)) l)
-  where
-    scoreSquare x = x * x
-    scoreLine l = length (takeWhile (\x -> x == ' ') (reverse l))
-
+takeRange :: [a] -> Int -> Int -> [a]
+takeRange l i j = (take (j-i) (drop i l))
 
 badness :: [String] -> Int -> Int -> Int -> Int
-badness w i j maxLength = badnessScore (take (j-i) (drop i w))
+badness w i j maxLength = badnessScore (takeRange w i j)
   where
+    badnessScore :: [String] -> Int
+    badnessScore [] = 0
     badnessScore w = if len > maxLength then 1000
-                     else left * left
+                     else margin * margin
       where
         len = lineLength w 1 maxLength
-        left = maxLength - len
+        margin = maxLength - len
 
-memoD :: [String] -> Int -> Int
-memoD w maxLength = innerMemo 0
+memoD :: [String] -> Int -> Array Int (Int,Int)
+memoD w maxLength = memos
   where
     innerMemo i =
-      if i == len then 0
-      else 1--minimum [(badness w i j) + memos ! j | j <- [len, (len-1)..(i + 1)]]
+      if i == len then (len, 0)
+      else (fst (head (filter (\(i, bad) -> bad == minBadness) followingIndices)), minBadness)
+      where
+        minBadness = minimum (map snd followingIndices)
+        followingIndices = [(j, (badness w i j maxLength) + snd (memos ! j)) | j <- [len, (len-1)..(i + 1)]]
     memos = listArray (0, len) [innerMemo i | i <- [0..len]]
     len = length w
 
+texJustify :: [String] -> [String] -> [String] -> Int -> [String]
+texJustify w l res maxLength = justifyInner [] 0
+  where
+    table = memoD w maxLength
+    wordsLength = length w
+    justifyInner :: [String] -> Int -> [String]
+    justifyInner res i = if i >= wordsLength then res
+                           else justifyInner (res ++ [line]) endIndex
+      where
+        endIndex = fst (table ! i)
+        line = widenLine wds 1 maxLength
+        wds = takeRange w i endIndex
 
 du :: ([String] -> [String] -> [String] -> Int -> [String]) -> IO ()
 du x = putStr (lineify (duRaw x))
