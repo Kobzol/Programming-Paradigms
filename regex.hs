@@ -3,9 +3,10 @@ module Regex where
 import Prelude
 import Data.Char
 import NFA
+import Debug.Trace
 
 data TokenType = Literal | Operator | LeftParen | RightParen | EOF | InvalidToken deriving (Eq, Show)  
-data OperatorType = Plus | Star | Dot | InvalidOperator deriving (Eq, Show)
+data OperatorType = Plus | Star | InvalidOperator deriving (Eq, Show)
 type Operator = (OperatorType, Int)
 type Token = (TokenType, String)
 type Alphabet = String
@@ -23,8 +24,7 @@ readLiteral (x:xs) a = if elem x a then x : (readLiteral xs a)
 
 getOperator :: Char -> Operator
 getOperator '+' = (Plus, 1)
-getOperator '.' = (Dot, 2)
-getOperator '*' = (Star, 3)
+getOperator '*' = (Star, 2)
 getOperator c = (InvalidOperator, -1)
 
 readToken :: String -> Alphabet -> (Token, String)
@@ -72,9 +72,6 @@ popOperators (token:stack) res oper =
     operStack = getOperator (head tokenStr)
     operTop = getOperator (head $ snd oper)
 
--- 1) implicit .
--- 2) control operator arity
-
 parse :: String -> Alphabet -> [Token]
 parse s a = parseInner s a [] []
   where
@@ -90,7 +87,9 @@ parse s a = parseInner s a [] []
         ((tokenType, tokenString), sRem) = readToken s a
         token = (tokenType, tokenString)
         (poppedRPStack, poppedRPRes) = popOperatorsUntilLP stack res
-        (operatorStack, operatorRes) = popOperators stack res token
+        (operatorType, _) = getOperator (head (tokenString))
+        (operatorStack, operatorRes) = if operatorType == Star then (stack, res ++ [token])
+                                       else popOperators stack res token
 
 executeAlt :: [Automat] -> [Automat]
 executeAlt (a1:a2:stack) = (alternativeNFA a1 a2) : stack
@@ -98,21 +97,22 @@ executeAlt (a1:a2:stack) = (alternativeNFA a1 a2) : stack
 executeIter :: [Automat] -> [Automat]
 executeIter (a:stack) = (iterateNFA a) : stack
 
-executeConcat :: [Automat] -> [Automat]
-executeConcat (a1:a2:stack) = (concatNFA a2 a1) : stack
-
 executeOperator :: [Automat] -> OperatorType -> [Automat]
 executeOperator a operator =
     if operator == Plus then executeAlt a
     else if operator == Star then executeIter a
-    else if operator == Dot then executeConcat a
     else a
+    
+    
+concatAutomatStack :: [Automat] -> Automat
+concatAutomatStack [a] = a
+concatAutomatStack (a:as) = concatNFA (concatAutomatStack as) a
 
 createNFA :: [Token] -> Automat
 createNFA input = createNFAInner input []
   where
     createNFAInner :: [Token] -> [Automat] -> Automat
-    createNFAInner [] [a] = a
+    createNFAInner [] a = concatAutomatStack a
     createNFAInner ((tokenType, tokenStr):xs) a =
       if tokenType == Literal then createNFAInner xs (literalAutomat:a)
       else if tokenType == Operator then createNFAInner xs $ executeOperator a operatorType
