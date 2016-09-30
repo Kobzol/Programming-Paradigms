@@ -6,7 +6,7 @@ import NFA
 import Debug.Trace
 
 data TokenType = Literal | Operator | LeftParen | RightParen | EOF | InvalidToken deriving (Eq, Show)  
-data OperatorType = Plus | Star | InvalidOperator deriving (Eq, Show)
+data OperatorType = Plus | Star | Dot | InvalidOperator deriving (Eq, Show)
 type Operator = (OperatorType, Int)
 type Token = (TokenType, String)
 type Alphabet = String
@@ -24,7 +24,8 @@ readLiteral (x:xs) a = if elem x a then x : (readLiteral xs a)
 
 getOperator :: Char -> Operator
 getOperator '+' = (Plus, 1)
-getOperator '*' = (Star, 2)
+getOperator '.' = (Dot, 2)
+getOperator '*' = (Star, 3)
 getOperator c = (InvalidOperator, -1)
 
 readToken :: String -> Alphabet -> (Token, String)
@@ -41,10 +42,10 @@ readToken s a = readInner (skipWhiteSpace s)
         where
           literal = readLiteral (x:xs) a
 
-readAllTokens :: String -> Alphabet -> [(Token, String)] -> [(Token, String)]
-readAllTokens s a res =
-  if tokenType == EOF then res
-  else readAllTokens (snd token) a (res ++ [token])
+readAllTokens :: String -> Alphabet -> [Token]
+readAllTokens s a =
+  if tokenType == EOF then [(fst token)]
+  else (fst token) : (readAllTokens (snd token) a)
   where
     token = readToken s a
     tokenType = fst (fst token)
@@ -72,22 +73,42 @@ popOperators (token:stack) res oper =
     operStack = getOperator (head tokenStr)
     operTop = getOperator (head $ snd oper)
 
-parse :: String -> Alphabet -> [Token]
-parse s a = parseInner s a [] []
+peekNext :: [Token] -> TokenType
+peekNext [] = InvalidToken
+peekNext ((tokenType, _):ts) = tokenType
+
+addConcatOperators :: [Token] -> [Token]
+addConcatOperators ts = addConcatInner ts
   where
-    parseInner :: String -> Alphabet -> [Token] -> OperStack -> [Token]
-    parseInner s a res stack =
-      if tokenType == Literal then parseInner sRem a (res ++ [token]) stack
-      else if tokenType == LeftParen then parseInner sRem a res (token : stack)
-      else if tokenType == RightParen then parseInner sRem a poppedRPRes poppedRPStack
-      else if tokenType == Operator then parseInner sRem a operatorRes operatorStack       
+    addConcatInner :: [Token] -> [Token]
+    addConcatInner [] = []
+    addConcatInner ((tokenType, tokenStr):ts) = 
+      if tokenType == RightParen && (nextType == LeftParen || nextType == Literal) then addedDot
+      else if tokenType == Literal && nextType == LeftParen then addedDot
+      else if tokenType == Operator && operType == Star && (nextType == LeftParen || nextType == Literal) then addedDot
+      else t:(addConcatInner ts)
+      where
+        nextType = peekNext ts
+        t = (tokenType, tokenStr)
+        addedDot = t:(Operator, "."):(addConcatInner ts)
+        (operType, _) = getOperator $ head tokenStr
+
+parse :: String -> Alphabet -> [Token]
+parse s a = parseInner tokens [] []
+  where
+    tokens = addConcatOperators (readAllTokens s a)
+    parseInner :: [Token] -> [Token] -> OperStack -> [Token]
+    parseInner ((tokenType, tokenString):ts) res stack =
+      if tokenType == Literal then parseInner ts (res ++ [token]) stack
+      else if tokenType == LeftParen then parseInner ts res (token : stack)
+      else if tokenType == RightParen then parseInner ts poppedRPRes poppedRPStack
+      else if tokenType == Operator then parseInner ts operatorRes operatorStack       
       else if tokenType == EOF then popOperatorsUntilEnd stack res
       else error("Invalid token " ++ (show tokenString))
       where
-        ((tokenType, tokenString), sRem) = readToken s a
         token = (tokenType, tokenString)
         (poppedRPStack, poppedRPRes) = popOperatorsUntilLP stack res
-        (operatorType, _) = getOperator (head (tokenString))
+        (operatorType, _) = getOperator (head tokenString)
         (operatorStack, operatorRes) = if operatorType == Star then (stack, res ++ [token])
                                        else popOperators stack res token
 
@@ -97,10 +118,14 @@ executeAlt (a1:a2:stack) = (alternativeNFA a1 a2) : stack
 executeIter :: [Automat] -> [Automat]
 executeIter (a:stack) = (iterateNFA a) : stack
 
+executeConcat :: [Automat] -> [Automat]
+executeConcat (a1:a2:stack) = (concatNFA a2 a1) : stack
+
 executeOperator :: [Automat] -> OperatorType -> [Automat]
 executeOperator a operator =
     if operator == Plus then executeAlt a
     else if operator == Star then executeIter a
+    else if operator == Dot then executeConcat a
     else a
     
     
@@ -124,5 +149,5 @@ createNFA input = createNFAInner input []
 regex :: String -> String -> Bool
 regex r input = testNFA nfa input
   where
-    tokens = parse r "ab" -- queue to stack
+    tokens = parse r "ab"
     nfa = createNFA tokens
