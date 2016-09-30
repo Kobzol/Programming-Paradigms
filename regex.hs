@@ -2,7 +2,7 @@ module Regex where
 
 import Prelude
 import Data.Char
-import Debug.Trace
+import NFA
 
 data TokenType = Literal | Operator | LeftParen | RightParen | EOF | InvalidToken deriving (Eq, Show)  
 data OperatorType = Plus | Star | Dot | InvalidOperator deriving (Eq, Show)
@@ -49,23 +49,23 @@ readAllTokens s a res =
     token = readToken s a
     tokenType = fst (fst token)
 
-popOperatorsUntilLP :: OperStack -> String -> (OperStack, String)
+popOperatorsUntilLP :: OperStack -> [Token] -> (OperStack, [Token])
 popOperatorsUntilLP [] res = error("Unbalanced parentheses")
 popOperatorsUntilLP ((tokenType, tokenString):stack) res =
   if tokenType == LeftParen then (stack, res)
-  else popOperatorsUntilLP stack (res ++ tokenString)
+  else popOperatorsUntilLP stack (res ++ [(tokenType, tokenString)])
 
-popOperatorsUntilEnd :: OperStack -> String -> String
+popOperatorsUntilEnd :: OperStack -> [Token] -> [Token]
 popOperatorsUntilEnd [] res = res
 popOperatorsUntilEnd ((tokenType, tokenString):stack) res =
   if tokenType == LeftParen then error("Unbalanced parentheses")
-  else popOperatorsUntilEnd stack (res ++ tokenString)
+  else popOperatorsUntilEnd stack (res ++ [(tokenType, tokenString)])
 
-popOperators :: OperStack -> String -> Token -> (OperStack, String)
+popOperators :: OperStack -> [Token] -> Token -> (OperStack, [Token])
 popOperators [] res oper = ([oper], res)
 popOperators (token:stack) res oper = 
   if (fst token) /= Operator then ((oper:token:stack), res)
-  else if (snd operTop) <= (snd operStack) then popOperators stack (res ++ tokenStr) oper
+  else if (snd operTop) <= (snd operStack) then popOperators stack (res ++ [token]) oper
   else ((oper:token:stack), res)
   where
     tokenStr = snd token
@@ -74,14 +74,13 @@ popOperators (token:stack) res oper =
 
 -- 1) implicit .
 -- 2) control operator arity
--- 3) create AST
 
-parse :: String -> Alphabet -> String
+parse :: String -> Alphabet -> [Token]
 parse s a = parseInner s a [] []
   where
-    parseInner :: String -> Alphabet -> String -> OperStack -> String
+    parseInner :: String -> Alphabet -> [Token] -> OperStack -> [Token]
     parseInner s a res stack =
-      if tokenType == Literal then parseInner sRem a (res ++ tokenString) stack
+      if tokenType == Literal then parseInner sRem a (res ++ [token]) stack
       else if tokenType == LeftParen then parseInner sRem a res (token : stack)
       else if tokenType == RightParen then parseInner sRem a poppedRPRes poppedRPStack
       else if tokenType == Operator then parseInner sRem a operatorRes operatorStack       
@@ -92,3 +91,38 @@ parse s a = parseInner s a [] []
         token = (tokenType, tokenString)
         (poppedRPStack, poppedRPRes) = popOperatorsUntilLP stack res
         (operatorStack, operatorRes) = popOperators stack res token
+
+executeAlt :: [Automat] -> [Automat]
+executeAlt (a1:a2:stack) = (alternativeNFA a1 a2) : stack
+
+executeIter :: [Automat] -> [Automat]
+executeIter (a:stack) = (iterateNFA a) : stack
+
+executeConcat :: [Automat] -> [Automat]
+executeConcat (a1:a2:stack) = (concatNFA a2 a1) : stack
+
+executeOperator :: [Automat] -> OperatorType -> [Automat]
+executeOperator a operator =
+    if operator == Plus then executeAlt a
+    else if operator == Star then executeIter a
+    else if operator == Dot then executeConcat a
+    else a
+
+createNFA :: [Token] -> Automat
+createNFA input = createNFAInner input []
+  where
+    createNFAInner :: [Token] -> [Automat] -> Automat
+    createNFAInner [] [a] = a
+    createNFAInner ((tokenType, tokenStr):xs) a =
+      if tokenType == Literal then createNFAInner xs (literalAutomat:a)
+      else if tokenType == Operator then createNFAInner xs $ executeOperator a operatorType
+      else error("Wrong token type in token input")
+      where
+        literalAutomat = stringNFA tokenStr
+        (operatorType, _) = getOperator $ head tokenStr
+
+regex :: String -> String -> Bool
+regex r input = testNFA nfa input
+  where
+    tokens = parse r "ab" -- queue to stack
+    nfa = createNFA tokens
