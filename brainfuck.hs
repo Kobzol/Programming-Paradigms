@@ -18,10 +18,10 @@ add :: Int -> [Int] -> Int -> [Int]
 add ptr mem value = set ptr mem ((mem !! ptr) + value)
                         
 getNextEnd :: String -> Int -> Int
-getNextEnd program i = head $ elemIndices ']' (drop i program)
+getNextEnd program i = (+) 1 $ head $ elemIndices ']' (drop i program)
 
 getPreviousBegin :: String -> Int -> Int
-getPreviousBegin program i = head $ elemIndices '[' (take i program)
+getPreviousBegin program i = (+) 1 $ head $ elemIndices '[' (take i program)
 
 run :: String -> String -> String
 run program input = runInner 0 input (0, (take 256 $ repeat 0))
