@@ -1,0 +1,7 @@
+// maximum ze zadanych cisel
+max = read;
+while( !eof ) {
+  n = read;
+  if( n > max ) max = n;
+}
+write max;

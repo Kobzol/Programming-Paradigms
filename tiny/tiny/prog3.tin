@@ -1,0 +1,8 @@
+// maximum ze zadanych cisel, vstup ukoncen nulou
+max = read;
+n = read;
+while( n != 0 ) {
+  if( n > max ) max = n;
+  n = read;
+}
+write max;
